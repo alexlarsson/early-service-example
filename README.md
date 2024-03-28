@@ -48,10 +48,10 @@ starting, and exchanging state:
     Mar 28 10:39:18 localhost early-service[432]: 7
     # Only the version started from the root filesystem is now running.
 
-It's meant to be that you will have some minimal service that runs in the
-initrd that does as little as possible, and passes it's state to the fully
-featured services running from the root filesystem. The initrd version should
-only be running for a few seconds at most.
+It's intended that you will have some minimal service that runs in the initrd
+that does as little as possible, and passes it's state to the fully featured
+services running from the root filesystem. The initrd version should only be
+running for a few seconds at most.
 
 
 ## Commands available on UNIX domain socket
@@ -104,10 +104,10 @@ You can use the following commands to build a RPM, and incorporate that
 RPM into an image created by the
 [Automotive Sample Images](https://gitlab.com/CentOS/automotive/sample-images).
 
-    scripts/create-rpm.sh early-service.spec
-    createrepo_c ~/rpmbuild/RPMS/x86_64/
-    cd /path/to/sample-images/osbuild-manifests
-    make DEFINES+='extra_repos=[{"id":"local","baseurl":"file:///home/masneyb/rpmbuild/RPMS/x86_64"}] extra_rpms=["early-service"] image_enabled_services=["early-service"]' cs9-qemu-developer-regular.x86_64.qcow2
+    $ scripts/create-rpm.sh early-service.spec
+    $ createrepo_c ~/rpmbuild/RPMS/x86_64/
+    $ cd /path/to/sample-images/osbuild-manifests
+    $ make DEFINES+='extra_repos=[{"id":"local","baseurl":"file:///home/masneyb/rpmbuild/RPMS/x86_64"}] extra_rpms=["early-service"] image_enabled_services=["early-service"]' cs9-qemu-developer-regular.x86_64.qcow2
 
 If you are incrementally rebuilding the same RPM for testing, then you'll need
 to run `dnf clean all` as your regular user to clean the dnf caches before
