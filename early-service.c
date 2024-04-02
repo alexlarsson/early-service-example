@@ -34,7 +34,7 @@ struct counter_data {
 struct connection_info {
 	GSocketConnection *connection;
 	struct counter_data *cntr;
-	char buf[50];
+	GString *buf;
 	gboolean terminate_at_end;
 };
 
@@ -58,6 +58,7 @@ void server_free_connection(struct connection_info *conn)
 	gboolean terminate = conn->terminate_at_end;
 
 	g_object_unref(G_SOCKET_CONNECTION(conn->connection));
+	g_string_free(conn->buf, TRUE);
 	g_free(conn);
 
 	if (terminate)
@@ -73,7 +74,7 @@ void server_message_sent(GObject *source_object, GAsyncResult *res,
 void server_send_message(struct connection_info *conn)
 {
 	g_output_stream_write_all_async(g_io_stream_get_output_stream(G_IO_STREAM(conn->connection)),
-					conn->buf, strlen(conn->buf),
+					conn->buf->str, conn->buf->len,
 					G_PRIORITY_DEFAULT, NULL,
 					server_message_sent, conn);
 }
@@ -96,34 +97,35 @@ void server_message_ready(GObject *source_object, GAsyncResult *res,
 		return;
 	}
 
-	if ((pos = strchr(conn->buf, '\n')) != NULL)
+	conn->buf->str[conn->buf->allocated_len - 1] = '\0';
+	if ((pos = strchr(conn->buf->str, '\n')) != NULL)
 		*pos = '\0';
+	conn->buf->len = strlen(conn->buf->str);
 
-	if (g_str_equal(conn->buf, "get_counter")) {
+	if (g_str_equal(conn->buf->str, "get_counter")) {
 		g_message("Returning counter to client");
 
-		g_snprintf(conn->buf, sizeof(conn->buf),
-			   "%d\n", conn->cntr->counter);
+		g_string_printf(conn->buf, "%d\n", conn->cntr->counter);
 		server_send_message(conn);
-	} else if (g_str_equal(conn->buf, "get_counter_and_terminate")) {
+	} else if (g_str_equal(conn->buf->str, "get_counter_and_terminate")) {
 		g_message("Returning counter to client and terminating the process");
 
 		conn->terminate_at_end = TRUE;
-		g_snprintf(conn->buf, sizeof(conn->buf),
-			   "%d\n", conn->cntr->counter);
+		g_string_printf(conn->buf, "%d\n", conn->cntr->counter);
 		server_send_message(conn);
-	} else if (g_str_has_prefix(conn->buf, SERVER_SET_COUNTER_COMMAND)) {
-		new_counter = g_ascii_strtoll(conn->buf + sizeof(SERVER_SET_COUNTER_COMMAND) - 1,
+	} else if (g_str_has_prefix(conn->buf->str,
+				    SERVER_SET_COUNTER_COMMAND)) {
+		new_counter = g_ascii_strtoll(conn->buf->str + sizeof(SERVER_SET_COUNTER_COMMAND) - 1,
 					      NULL, 10);
 
 		g_message("Setting the counter to %d", new_counter);
 
-		g_snprintf(conn->buf, sizeof(conn->buf),
-			   "previous value %d\n", conn->cntr->counter);
+		g_string_printf(conn->buf, "previous value %d\n",
+				conn->cntr->counter);
 		conn->cntr->counter = new_counter;
 		server_send_message(conn);
 	} else {
-		g_message("Unknown message '%s' from client", conn->buf);
+		g_message("Unknown message '%s' from client", conn->buf->str);
 		server_free_connection(conn);
 	}
 }
@@ -137,9 +139,10 @@ static gboolean server_incoming_connection(GSocketService *service,
 
 	conn->connection = g_object_ref(connection);
 	conn->cntr = user_data;
+	conn->buf = g_string_sized_new(127);
 
 	g_input_stream_read_async(g_io_stream_get_input_stream(G_IO_STREAM(connection)),
-				  conn->buf, sizeof(conn->buf),
+				  conn->buf->str, conn->buf->allocated_len,
 				  G_PRIORITY_DEFAULT, NULL,
 				  server_message_ready, conn);
 
