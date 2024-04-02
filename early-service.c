@@ -68,6 +68,14 @@ void server_free_connection(struct connection_info *conn)
 void server_message_sent(GObject *source_object, GAsyncResult *res,
 			 gpointer user_data)
 {
+	GOutputStream *ostream = G_OUTPUT_STREAM(source_object);
+	GError *error = NULL;
+
+	g_output_stream_write_all_finish(ostream, res, NULL, &error);
+	if (error != NULL) {
+		g_printerr("%s", error->message);
+		g_error_free(error);
+	}
 	server_free_connection(user_data);
 }
 
