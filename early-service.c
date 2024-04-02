@@ -72,10 +72,10 @@ void server_message_sent(GObject *source_object, GAsyncResult *res,
 
 void server_send_message(struct connection_info *conn)
 {
-	g_output_stream_write_async(g_io_stream_get_output_stream(G_IO_STREAM(conn->connection)),
-				    conn->buf, strlen(conn->buf),
-				    G_PRIORITY_DEFAULT, NULL,
-				    server_message_sent, conn);
+	g_output_stream_write_all_async(g_io_stream_get_output_stream(G_IO_STREAM(conn->connection)),
+					conn->buf, strlen(conn->buf),
+					G_PRIORITY_DEFAULT, NULL,
+					server_message_sent, conn);
 }
 
 #define SERVER_SET_COUNTER_COMMAND "set_counter "
