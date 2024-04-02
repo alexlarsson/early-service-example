@@ -314,6 +314,7 @@ int main(int argc, char **argv)
 	g_source_remove(timer_id);
 	if (service != NULL) {
 		g_socket_service_stop(service);
+		g_socket_listener_close(G_SOCKET_LISTENER(service));
 		g_unlink(server_socket_path);
 	}
 
