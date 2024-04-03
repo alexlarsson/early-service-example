@@ -11,6 +11,8 @@ static gchar *client_socket_path;
 static GMainLoop *loop;
 static gboolean survive_systemd_kill_signal = FALSE;
 
+#define READ_BUFFER_LEN 127
+
 // Command line arguments
 static GOptionEntry entries[] = {
 	{ "timer_delay_ms", 'd', 0, G_OPTION_ARG_INT, &timer_delay_ms,
@@ -55,28 +57,35 @@ static gboolean timer_callback(gpointer data)
 
 void server_free_connection(struct connection_info *conn)
 {
-	gboolean terminate = conn->terminate_at_end;
-
 	g_object_unref(G_SOCKET_CONNECTION(conn->connection));
 	g_string_free(conn->buf, TRUE);
 	g_free(conn);
-
-	if (terminate)
-		g_main_loop_quit(loop);
 }
 
 void server_message_sent(GObject *source_object, GAsyncResult *res,
 			 gpointer user_data)
 {
 	GOutputStream *ostream = G_OUTPUT_STREAM(source_object);
+	struct connection_info *conn = user_data;
+	gboolean terminate = conn->terminate_at_end;
 	GError *error = NULL;
+	gboolean success;
 
-	g_output_stream_write_all_finish(ostream, res, NULL, &error);
+	success = g_output_stream_write_all_finish(ostream, res, NULL, &error);
 	if (error != NULL) {
 		g_printerr("%s", error->message);
 		g_error_free(error);
+		server_free_connection(conn);
+		return;
+	} else if (!success) {
+		server_free_connection(conn);
+		return;
 	}
-	server_free_connection(user_data);
+
+	if (terminate) {
+		server_free_connection(conn);
+		g_main_loop_quit(loop);
+	}
 }
 
 void server_send_message(struct connection_info *conn)
@@ -96,15 +105,26 @@ void server_message_ready(GObject *source_object, GAsyncResult *res,
 	struct connection_info *conn = user_data;
 	GError *error = NULL;
 	int new_counter;
+	gssize count;
 	char *pos;
 
-	g_input_stream_read_finish(istream, res, &error);
+	count = g_input_stream_read_finish(istream, res, &error);
 	if (error != NULL) {
 		g_printerr("%s", error->message);
 		g_error_free(error);
+		server_free_connection(conn);
+		return;
+	} else if (count == 0) {
+		server_free_connection(conn);
 		return;
 	}
 
+	/*
+	 * Note that this doesn't properly handle buffers containing
+	 * multiple commands, or where a single command spans multiple
+	 * buffers. This assumes one command per buffer since this
+	 * program is just a proof of concept.
+	 */
 	conn->buf->str[conn->buf->allocated_len - 1] = '\0';
 	if ((pos = strchr(conn->buf->str, '\n')) != NULL)
 		*pos = '\0';
@@ -134,8 +154,15 @@ void server_message_ready(GObject *source_object, GAsyncResult *res,
 		server_send_message(conn);
 	} else {
 		g_message("Unknown message '%s' from client", conn->buf->str);
-		server_free_connection(conn);
+
+		g_string_printf(conn->buf, "Invalid command\n");
+		server_send_message(conn);
 	}
+
+	g_string_set_size(conn->buf, READ_BUFFER_LEN);
+	g_input_stream_read_async(istream, conn->buf->str,
+				  conn->buf->allocated_len, G_PRIORITY_DEFAULT,
+				  NULL, server_message_ready, conn);
 }
 
 static gboolean server_incoming_connection(GSocketService *service,
@@ -147,7 +174,7 @@ static gboolean server_incoming_connection(GSocketService *service,
 
 	conn->connection = g_object_ref(connection);
 	conn->cntr = user_data;
-	conn->buf = g_string_sized_new(127);
+	conn->buf = g_string_sized_new(READ_BUFFER_LEN);
 
 	g_input_stream_read_async(g_io_stream_get_input_stream(G_IO_STREAM(connection)),
 				  conn->buf->str, conn->buf->allocated_len,
