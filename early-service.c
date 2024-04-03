@@ -68,13 +68,12 @@ void server_message_sent(GObject *source_object, GAsyncResult *res,
 	GOutputStream *ostream = G_OUTPUT_STREAM(source_object);
 	struct connection_info *conn = user_data;
 	gboolean terminate = conn->terminate_at_end;
-	GError *error = NULL;
+	g_autoptr(GError) error = NULL;
 	gboolean success;
 
 	success = g_output_stream_write_all_finish(ostream, res, NULL, &error);
 	if (error != NULL) {
 		g_printerr("%s", error->message);
-		g_error_free(error);
 		server_free_connection(conn);
 		return;
 	} else if (!success) {
@@ -103,7 +102,7 @@ void server_message_ready(GObject *source_object, GAsyncResult *res,
 {
 	GInputStream *istream = G_INPUT_STREAM(source_object);
 	struct connection_info *conn = user_data;
-	GError *error = NULL;
+	g_autoptr(GError) error = NULL;
 	int new_counter;
 	gssize count;
 	char *pos;
@@ -111,7 +110,6 @@ void server_message_ready(GObject *source_object, GAsyncResult *res,
 	count = g_input_stream_read_finish(istream, res, &error);
 	if (error != NULL) {
 		g_printerr("%s", error->message);
-		g_error_free(error);
 		server_free_connection(conn);
 		return;
 	} else if (count == 0) {
@@ -187,9 +185,9 @@ static gboolean server_incoming_connection(GSocketService *service,
 static GSocketService *create_unix_domain_server(char *server_socket_path,
 						 struct counter_data *cntr)
 {
-	GSocketService *service;
-	GSocketAddress *address;
-	GError *error = NULL;
+	g_autoptr(GSocketService) service = NULL;
+	g_autoptr(GSocketAddress) address = NULL;
+	g_autoptr(GError) error = NULL;
 
 	service = g_socket_service_new();
 	if (service == NULL) {
@@ -200,7 +198,6 @@ static GSocketService *create_unix_domain_server(char *server_socket_path,
 	address = g_unix_socket_address_new(server_socket_path);
 	if (address == NULL) {
 		g_printerr("Error creating socket address.\n");
-		g_object_unref(service);
 		return NULL;
 	}
 
@@ -210,9 +207,6 @@ static GSocketService *create_unix_domain_server(char *server_socket_path,
 					   G_SOCKET_PROTOCOL_DEFAULT,
 					   NULL, NULL, &error)) {
 		g_printerr("Error binding socket: %s\n", error->message);
-		g_error_free(error);
-		g_object_unref(service);
-		g_object_unref(address);
 		return NULL;
 	}
 
@@ -221,7 +215,7 @@ static GSocketService *create_unix_domain_server(char *server_socket_path,
 
 	g_socket_service_start(service);
 
-	return service;
+	return g_steal_pointer(&service);
 }
 
 /*
@@ -235,10 +229,10 @@ static GSocketService *create_unix_domain_server(char *server_socket_path,
 
 int read_counter_from_server(gchar *server_path)
 {
-	GSocketConnection *connection;
-	GSocketAddress *address;
-	GSocketClient *client;
-	GError *error = NULL;
+	g_autoptr(GSocketConnection) connection = NULL;
+	g_autoptr(GSocketAddress) address = NULL;
+	g_autoptr(GSocketClient) client = NULL;
+	g_autoptr(GError) error = NULL;
 	gssize bytes_read;
 	gchar buf[100];
 
@@ -254,7 +248,6 @@ int read_counter_from_server(gchar *server_path)
 		 * Just start over.
 		 */
 		g_printerr("Error connecting to socket: %s", error->message);
-		g_error_free(error);
 		return 0;
 	}
 
@@ -265,7 +258,6 @@ int read_counter_from_server(gchar *server_path)
 			      strlen(CLIENT_GET_COUNTER_COMMAND), NULL, &error);
 	if (error != NULL) {
 		g_printerr("Error writing to socket: %s", error->message);
-		g_error_free(error);
 		return 0;
 	}
 
@@ -273,14 +265,10 @@ int read_counter_from_server(gchar *server_path)
 					 NULL, &error);
 	if (error != NULL) {
 		g_printerr("Error reading from socket: %s", error->message);
-		g_error_free(error);
 		return 0;
 	}
 
 	buf[bytes_read] = '\0';
-
-	g_object_unref(connection);
-	g_object_unref(client);
 
 	return g_ascii_strtoll(buf, NULL, 10);
 }
@@ -298,9 +286,9 @@ int get_initial_counter(void)
 
 int main(int argc, char **argv)
 {
-	GSocketService *service = NULL;
-	GOptionContext *context;
-	GError *error = NULL;
+	g_autoptr(GSocketService) service = NULL;
+	g_autoptr(GOptionContext) context = NULL;
+	g_autoptr(GError) error = NULL;
 
 	context = g_option_context_new("- Example Early Service");
 	g_option_context_add_main_entries(context, entries, NULL);
